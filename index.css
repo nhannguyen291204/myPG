@@ -1,0 +1,44 @@
+@import "tailwindcss";
+
+/* ---- Design tokens P&G navy (Tailwind v4 @theme) ----
+   Khai báo biến màu -> Tailwind tự sinh utility: bg-navy-600, text-navy-900,
+   border-line, bg-surface, text-pass, bg-reject/10 ... */
+@theme {
+  --color-navy-900: #1f3864;
+  --color-navy-600: #2e5496;
+  --color-navy-400: #5a6b8c;
+
+  --color-surface: #f5f7fa;
+  --color-line: #e5e8ee;
+
+  --color-pass: #4caf50;
+  --color-recheck: #ff9800;
+  --color-reject: #e53935;
+
+  --color-tamu-t: #9e9e9e;
+  --color-tamu-a: #4caf50;
+  --color-tamu-m: #ff9800;
+  --color-tamu-u: #e53935;
+}
+
+/* ---- Base ---- */
+:root {
+  color-scheme: light;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-surface);
+  color: #1a1a1a;
+  /* Font hệ thống: San Francisco trên iOS, Roboto trên Android */
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-font-smoothing: antialiased;
+}

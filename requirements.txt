@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+ultralytics
+opencv-python
+python-multipart
+pillow
+pillow-heif  # decode HEIC từ iPhone (Pillow plugin)
+numpy<2  # torch 2.2.2 + ultralytics tương thích NumPy 1.x; tránh warning/crash với numpy>=2
