@@ -12,6 +12,7 @@ import Stats from "./pages/Stats";
 import Settings from "./pages/Settings";
 import UserManagement from "./pages/UserManagement";
 import CustomModel from "./pages/CustomModel";
+import CheckImage from "./pages/CheckImage";
 
 export default function App() {
   return (
@@ -30,6 +31,7 @@ export default function App() {
                 <Route path="/result" element={<Result />} />
                 <Route path="/history" element={<History />} />
                 <Route path="/history/:id" element={<InspectionDetail />} />
+                <Route path="/check-image" element={<CheckImage />} />
                 <Route path="/stats" element={<Stats />} />
                 <Route path="/settings" element={<Settings />} />
 
