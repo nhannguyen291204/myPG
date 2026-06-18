@@ -1,86 +1,113 @@
-# PassME Web — AI Vision Inspection (P&G)
+# PassME (P&G × RMIT Capstone 2026)
 
-Web app React mobile-first thay cho app Expo cũ. iPhone/Android mở bằng trình duyệt, không cần cài app. Backend FastAPI + YOLOv8 (`/detect`) giữ nguyên — web chỉ gọi API.
+Prototype kiểm tra lỗi sản phẩm bằng thị giác máy. Điện thoại chụp ảnh → backend chạy YOLOv8 → trả verdict **PASS / RE-CHECK / REJECT** theo khung độ nặng **TAMU** của P&G. Có đăng nhập + phân quyền (QC / Quản lý / Admin), lưu lịch sử và thống kê chung.
 
-> **Giai đoạn 2** (bản này): đăng nhập thật + database + kho ảnh + phân quyền **RLS** qua **Supabase**. Lịch sử/Thống kê đọc từ DB; ảnh annotate lưu trên Supabase Storage (bucket private, hiển thị qua **signed URL**). Luồng Kiểm tra → `/detect` (backend YOLO) **giữ nguyên**, độc lập Supabase.
-> Giai đoạn 1 (mock auth + localStorage) đã được thay thế.
+## Kiến trúc
 
-## Stack
+- **Backend** — FastAPI + YOLOv8 (`iOS Demo Plan/backend/`). Chạy *local trên máy mỗi người*. Endpoint `/detect`, `/health`. Model `best.pt` có sẵn trong repo.
+- **Web app** — React + Vite (`iOS Demo Plan/webapp-v2/passme-web/`). Gọi backend để nhận diện, gọi Supabase để đăng nhập + lưu dữ liệu.
+- **Supabase** — dịch vụ cloud **dùng chung** cho cả nhóm: đăng nhập, database, kho ảnh, phân quyền.
 
-Vite + React + TypeScript · Tailwind CSS v4 · React Router v7 · Recharts · lucide-react · **Supabase** (Auth + Postgres + Storage).
+## Yêu cầu môi trường
 
-## Chạy dev
+- **Python 3.12**, **Node 18+**, **Git**.
+- Backend chạy nhanh nhất trên Mac Apple Silicon (M1/M2). Máy Windows / Mac Intel / Linux vẫn chạy được nhưng dùng CPU nên chậm hơn (mỗi ảnh ~1–3 giây).
 
+## Cài đặt cho thành viên mới (clone về là chạy theo được)
+
+### Bước 1 — Clone repo
+```bash
+git clone https://github.com/s3830318/passme-P-G.git
+cd passme-P-G
+```
+
+### Bước 2 — Backend (Terminal 1)
+```bash
+cd "iOS Demo Plan/backend"
+python3 -m venv .venv
+source .venv/bin/activate            # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+uvicorn app:app --host 0.0.0.0 --port 8000     # KHÔNG dùng --reload
+```
+- `best.pt` (model) đã có sẵn trong repo — không cần xin riêng.
+- Kiểm tra: mở `http://localhost:8000/health` → `{"status":"ok",...}`.
+
+### Bước 3 — Web app (Terminal 2)
 ```bash
 cd "iOS Demo Plan/webapp-v2/passme-web"
 npm install
-npm run dev            # vite.config đã bật host:true (bind 0.0.0.0)
+cp .env.example .env                 # rồi mở .env điền giá trị (xem Bước 4)
+npm run dev -- --host
+```
+Mở `http://localhost:5173` (trên máy) hoặc `http://<IP-máy>:5173` (trên điện thoại cùng Wi-Fi — xem IP bằng `ipconfig getifaddr en0` trên Mac).
+
+### Bước 4 — File `.env` của web
+
+`.env.example` đã điền sẵn **Supabase URL + anon key** (project chung của nhóm), nên sau khi `cp .env.example .env` ở Bước 3 là dùng được ngay. Chỉ cần chỉnh **`VITE_BACKEND_URL`** khi:
+- backend chạy ở máy/cổng khác, hoặc
+- test trên điện thoại → đổi `localhost` thành IP LAN của máy chạy backend (vd `http://192.168.1.10:8000`).
+
+```
+VITE_BACKEND_URL=http://localhost:8000
+VITE_SUPABASE_URL=https://aexexnougxobumqwvqqa.supabase.co
+VITE_SUPABASE_ANON_KEY=eyJ…   # đã có sẵn trong .env.example
+```
+`anon key` là khoá **công khai**, an toàn ở client vì dữ liệu được RLS bảo vệ. **Không** dùng `service_role`/secret key.
+
+### Bước 5 — Tài khoản đăng nhập (demo)
+
+Supabase dùng chung, **không cho tự đăng ký** — Admin tạo sẵn tài khoản. Dùng các tài khoản demo dưới đây để đăng nhập và thử phân quyền:
+
+| Vai trò | Email | Mật khẩu |
+|---|---|---|
+| Admin | `passme@gmail.com` | `passme@2026` |
+| QC | `passmeqc@gmail.com` | `passme@2026` |
+
+- **Admin**: thấy mọi bản ghi cả nhóm, chỉnh ngưỡng/model, quản lý người dùng.
+- **QC**: chỉ thấy bản ghi của mình, không vào được Quản lý người dùng.
+
+> Đây là tài khoản demo cho capstone. Đừng dùng mật khẩu này cho tài khoản cá nhân/quan trọng; sau khi bảo vệ xong nên đổi.
+
+## Cấu trúc thư mục
+
+```
+iOS Demo Plan/
+  backend/        FastAPI + YOLOv8 (best.pt). Endpoint /detect, /health.
+  backend/web/    Web prototype HTML thuần (1 màn chụp→kết quả).
+  passme-app/     App Expo cũ (React Native) — giữ tham khảo, không phát triển tiếp.
+  webapp-v2/
+    passme-web/   Web app React chính. Tài liệu thiết kế trong passme-web/docs/.
+    UI_UX_SPEC.md Đặc tả giao diện.
 ```
 
-- Máy: http://localhost:5173
-- Điện thoại cùng Wi-Fi: **http://<IP-Mac>:5173** (`ipconfig getifaddr en0`).
-- `npx tsc --noEmit -p tsconfig.app.json` để kiểm type; `npm run build` để build production.
+## Tài liệu kỹ thuật (cho dev)
 
-## Biến môi trường (`.env`)
+- **Database (Supabase)** — `iOS Demo Plan/webapp-v2/passme-web/docs/phase2-supabase.md`: schema, RLS, kho ảnh, SQL migration, các bước dựng Supabase.
+- **Web app chi tiết** — `…/passme-web/docs/`: architecture, api-contract, design-system, auth-rbac.
+- **Train model YOLO** — `iOS Demo Plan/training/`: kế hoạch chụp ảnh, hướng dẫn Roboflow, notebook Colab.
+- **Đổi model (`best.pt`)** — `iOS Demo Plan/DEPLOY_NOTES.md`.
 
-```
-# Backend FastAPI/YOLO — KHÔNG hardcode IP trong code
-VITE_BACKEND_URL=http://192.168.100.7:8000
+## Quy tắc làm việc nhóm (Git)
 
-# Supabase (Dashboard → Settings → API). anon key là khoá CÔNG KHAI, an toàn ở client
-# vì RLS bảo vệ dữ liệu. KHÔNG đặt service_role key vào client.
-VITE_SUPABASE_URL=https://<project-ref>.supabase.co
-VITE_SUPABASE_ANON_KEY=<anon public key>
-```
+- **Không commit thẳng vào `main`.**
+- Sửa lỗi → nhánh `bug/<mô-tả>`. Tính năng mới → nhánh `feature/<mô-tả>`.
+- Xong việc → mở Pull Request, nhờ 1 thành viên review rồi mới merge.
+- Không commit file lớn (`.venv`, `node_modules`, `.zip`, video, `.env`) — đã chặn trong `.gitignore`.
 
-`.env` thật **không commit** (đã trong `.gitignore`); xem mẫu ở `.env.example`. Backend phải bind `0.0.0.0:8000` + CORS `*`.
+## Xử lý lỗi thường gặp
 
-## Supabase — dựng 1 lần
+- **Web báo "Lỗi mạng" / Cài đặt báo "Offline"**: backend chưa chạy, hoặc `VITE_BACKEND_URL` sai, hoặc điện thoại khác Wi-Fi với máy chạy backend.
+- **Cài `torch` lâu / nặng (Windows)**: bình thường, thư viện này lớn. Máy không phải Apple Silicon sẽ chạy CPU nên chậm hơn, vẫn ra kết quả.
+- **Đăng nhập báo sai**: tài khoản chưa được Admin cấp, hoặc sai mật khẩu. Liên hệ Admin.
+- **Đổi Wi-Fi / router cấp IP mới**: cập nhật `VITE_BACKEND_URL` cho khớp IP máy chạy backend.
 
-Xem `docs/phase2-supabase.md` (migration SQL §2, RLS, bucket, cách tạo Admin §6). Tóm tắt:
-1. Tạo project Supabase, chạy migration §2 (bảng `profiles` + `inspections`, hàm `is_admin`/`is_supervisor_or_admin`, RLS, bucket `inspections`).
-2. **Tắt self-signup** (Authentication → Providers). Tài khoản do Admin tạo ở Dashboard.
-3. Tạo Admin đầu tiên: Authentication → Users → Add user → SQL `update profiles set role='admin', full_name='...' where id='<uuid>';`.
+## Nhóm PassME
 
-## Đăng nhập + phân quyền (RLS thật)
-
-Đăng nhập bằng email + mật khẩu thật (Supabase Auth). Phân quyền **ở tầng database (RLS)** — client không vượt được; `lib/permissions.ts` chỉ ẩn/hiện UI.
-
-| Vai trò | Quyền (RLS bảo đảm) |
+| Người | Vai trò |
 |---|---|
-| **qc** | Tạo + xem lịch sử/ảnh **của mình** |
-| **supervisor** | + xem lịch sử/thống kê **cả team** + chỉnh ngưỡng (local) |
-| **admin** | + **đổi vai trò / khoá** tài khoản (`profiles_update_admin`) |
+| Nguyen Thanh Dat (Tommy) | Tester |
+| Le Nguyen Minh Quan | Project Manager |
+| Nguyen Trong Nhan | Data Engineer |
+| Nguyen Thach Khanh Dzi | Backend Developer |
 
-## Cấu trúc
-
-```
-src/
-  App.tsx              router + AuthProvider + DraftProvider
-  routes/AppLayout     khung mobile + bottom tab + <Outlet/>
-  pages/               Login, Inspect, Result, History, InspectionDetail, Stats, Settings, UserManagement
-  components/          VerdictBadge, TamuCounts, DetectionRow, HistoryCard, MetricCard, Header, BottomTab, ProtectedRoute, Button
-  lib/                 supabase (client) · auth (Supabase Auth + profiles) · storage (DB + Storage)
-                       · api (detect/health — KHÔNG đổi) · draft (Kiểm tra→Kết quả) · permissions · format
-  types.ts  constants.ts  index.css (@theme tokens navy)
-public/sample.jpg      ảnh cho nút "Dùng ảnh mẫu"
-```
-
-- **Ảnh**: `/detect` trả base64 → khi "Lưu": base64 → Blob → upload bucket `inspections` path `{user_id}/{id}.jpg`; DB chỉ lưu `annotated_path`. Hiển thị bằng signed URL.
-- **localStorage** giờ chỉ giữ `passme.threshold` (ngưỡng theo máy) + token phiên của Supabase.
-- `id` bản ghi là **UUID v4** (`genId()` dựng qua `crypto.getRandomValues` để chạy được cả trên http LAN).
-
-## Ghi chú
-
-- **profiles không lưu email** (email ở `auth.users`) → màn Quản lý người dùng hiển thị theo tên; email thật chỉ hiện cho user đang đăng nhập (lấy từ session).
-- Ngưỡng tin cậy vẫn là cài đặt theo máy (localStorage) + đóng dấu vào bản ghi; backend vẫn chạy cố định `0.25`.
-- Tạo user mới = Admin làm ở Supabase Dashboard. Tạo user ngay trong app cần Edge Function dùng `service_role` (không để key đó ở client) — chưa làm.
-
-## Cập nhật UI
-
-- **Responsive desktop**: `< lg` giữ nguyên mobile (cột 480px + `BottomTab` dưới); `>= lg` có `Sidebar` trái cố định + nội dung rộng (lưới thẻ ở Lịch sử / Thống kê / Quản lý người dùng). `BottomTab` ẩn ở desktop.
-- **Model tùy chỉnh** (`/models`, chỉ Quản lý/Admin): tải dataset `.zip` (YOLO export từ Roboflow) → đặt tên → train → ra model + mAP, chọn model "đang dùng". **Train đang MÔ PHỎNG** ở frontend (`lib/training.ts`, lưu `passme.models` trong localStorage); backend train YOLO thật nối sau — xem TODO trong `lib/training.ts`.
-
-## Việc về sau (tuỳ chọn)
-
-PWA "thêm vào màn hình chính" · đa ngôn ngữ Việt/Anh · layout 2 cột cho tablet/desktop · tạo user trong app qua Edge Function · truyền ngưỡng tin cậy xuống backend.
+Đối tác: P&G Vietnam · GVHD: Dr. Vinh Truong.

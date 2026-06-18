@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+<title>PassME — Vision Inspection</title>
+<!--
+  PassME — Web UI (P&G AI Vision Inspection).
+  Thay thế app Expo: chụp/chọn ảnh -> POST /detect (cùng origin, không cần IP cứng)
+  -> hiển thị ảnh annotate + verdict PASS / RE-CHECK / REJECT + đếm defect theo TAMU.
+  Được serve bởi FastAPI tại GET / (xem app.py). Không cần build, không cần Expo.
+-->
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #fff; color: #333;
+    padding: 20px; padding-top: 48px;
+    max-width: 520px; margin: 0 auto;
+    text-align: center;
+  }
+  h1 { font-size: 22px; font-weight: 700; color: #1F3864; }
+  .sub { color: #777; margin-bottom: 20px; font-size: 14px; }
+  .row { display: flex; gap: 12px; justify-content: center; }
+  .btn {
+    background: #2E5496; color: #fff; font-weight: 600; font-size: 15px;
+    padding: 12px 18px; border: none; border-radius: 10px; cursor: pointer;
+  }
+  .btn-alt { background: #5A6B8C; }
+  .btn:active { opacity: 0.8; }
+  #spinner {
+    display: none; margin: 24px auto 0;
+    width: 36px; height: 36px;
+    border: 4px solid #ddd; border-top-color: #2E5496; border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #badge {
+    display: none; margin: 24px auto 0; padding: 10px 28px;
+    border-radius: 24px; color: #fff; font-size: 20px; font-weight: 800;
+    letter-spacing: 1px; width: fit-content;
+  }
+  #timeBadge { display: none; margin-top: 6px; font-size: 12px; color: #999; font-style: italic; }
+  #annotated {
+    display: none; width: 100%; max-height: 380px; object-fit: contain;
+    margin-top: 16px; border-radius: 10px; background: #eee;
+  }
+  #countBox { display: none; margin-top: 16px; }
+  #countTitle { font-weight: 700; color: #333; }
+  #countLine { margin-top: 4px; font-size: 16px; color: #333; }
+  #imageHint { margin-top: 4px; font-size: 12px; color: #999; }
+  #detections { margin-top: 8px; text-align: left; }
+  .det-row {
+    border-left: 5px solid #999; padding: 6px 0 6px 10px; margin-top: 8px;
+    background: #f5f5f5; border-radius: 6px; font-size: 14px; color: #333;
+  }
+  #retakeBtn {
+    display: none; margin: 20px auto 0; padding: 11px 28px;
+    border-radius: 10px; border: 1.5px solid #2E5496; background: transparent;
+    color: #2E5496; font-weight: 700; font-size: 15px; cursor: pointer;
+  }
+</style>
+</head>
+<body>
+  <h1>PassME — Vision Inspection</h1>
+  <p class="sub">P&amp;G AI Vision · web demo</p>
+
+  <div class="row">
+    <button class="btn" id="cameraBtn">Chụp ảnh</button>
+    <button class="btn btn-alt" id="libraryBtn">Chọn từ thư viện</button>
+  </div>
+
+  <!-- input ẩn: capture="environment" mở thẳng camera sau trên iPhone/Android -->
+  <input type="file" id="cameraInput" accept="image/*" capture="environment" hidden />
+  <input type="file" id="libraryInput" accept="image/*,.heic,.heif" hidden />
+
+  <div id="spinner"></div>
+  <div id="badge"></div>
+  <div id="timeBadge"></div>
+  <img id="annotated" alt="Ảnh kết quả" />
+  <div id="countBox">
+    <div id="countTitle">Defect theo TAMU</div>
+    <div id="countLine"></div>
+    <div id="imageHint"></div>
+  </div>
+  <div id="detections"></div>
+  <button id="retakeBtn">Chụp lại</button>
+
+<script>
+"use strict";
+
+// Cùng origin với backend -> không cần IP cứng. Đổi IP/tunnel gì trang vẫn chạy.
+const BACKEND_URL = "/detect";
+const TIMEOUT_MS = 30000;
+
+// Lưới an toàn demo: true -> fetch lỗi sẽ hiện kết quả giả (REJECT) thay vì báo lỗi.
+// Mặc định false để không che bug thật. (Cùng cơ chế với App.tsx cũ.)
+const DEMO_FALLBACK = false;
+const FALLBACK_RESULT = {
+  summary: {
+    verdict: "REJECT",
+    counts: { T: 0, A: 0, M: 0, U: 1 },
+    n_defects: 1,
+    image_size: { w: 1280, h: 960 },
+    inference_ms: 87,
+    total_ms: 142,
+  },
+  detections: [{
+    class: "defect", confidence: 0.95, bbox: [520, 380, 240, 200],
+    area: 48000, area_ratio: 0.039, tamu: "U", action: "REJECT", color: "#E53935",
+  }],
+  annotated_image:
+    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+};
+
+const VERDICT_COLORS = { "PASS": "#4CAF50", "RE-CHECK": "#FF9800", "REJECT": "#E53935" };
+// Rung phản hồi (thay expo-haptics). Hoạt động trên Android Chrome;
+// iOS Safari không hỗ trợ navigator.vibrate -> bỏ qua êm, không lỗi.
+const VERDICT_VIBRATE = { "PASS": [60], "RE-CHECK": [60, 80, 60], "REJECT": [120, 60, 120] };
+
+const $ = (id) => document.getElementById(id);
+
+function setLoading(on) {
+  $("spinner").style.display = on ? "block" : "none";
+  $("cameraBtn").disabled = on;
+  $("libraryBtn").disabled = on;
+}
+
+function clearResult() {
+  ["badge", "timeBadge", "annotated", "countBox", "retakeBtn"].forEach(
+    (id) => { $(id).style.display = "none"; }
+  );
+  $("detections").innerHTML = "";
+}
+
+function showResult(data) {
+  const s = data.summary || {};
+  const verdict = s.verdict;
+
+  if (verdict) {
+    const badge = $("badge");
+    badge.textContent = verdict;
+    badge.style.background = VERDICT_COLORS[verdict] || "#555";
+    badge.style.display = "block";
+    if (navigator.vibrate && VERDICT_VIBRATE[verdict]) {
+      try { navigator.vibrate(VERDICT_VIBRATE[verdict]); } catch (_) {}
+    }
+  }
+
+  if (s.inference_ms != null) {
+    $("timeBadge").textContent = "Detected in " + Math.round(s.inference_ms) + "ms";
+    $("timeBadge").style.display = "block";
+  }
+
+  if (data.annotated_image) {
+    $("annotated").src = data.annotated_image;
+    $("annotated").style.display = "block";
+  }
+
+  const c = s.counts || {};
+  $("countLine").textContent =
+    "T:" + (c.T ?? 0) + "  ·  A:" + (c.A ?? 0) + "  ·  M:" + (c.M ?? 0) +
+    "  ·  U:" + (c.U ?? 0) + "  (tổng " + (s.n_defects ?? 0) + ")";
+  if (s.image_size && s.image_size.w != null && s.image_size.h != null) {
+    $("imageHint").textContent = "Image " + s.image_size.w + "×" + s.image_size.h;
+  } else {
+    $("imageHint").textContent = "";
+  }
+  $("countBox").style.display = "block";
+
+  const wrap = $("detections");
+  wrap.innerHTML = "";
+  (data.detections || []).forEach((d) => {
+    const row = document.createElement("div");
+    row.className = "det-row";
+    row.style.borderLeftColor = d.color || "#999";
+    row.textContent =
+      d.class + " · " + d.tamu + " · " + d.action +
+      " · conf " + Math.round((d.confidence || 0) * 100) + "%";
+    wrap.appendChild(row);
+  });
+
+  $("retakeBtn").style.display = "block";
+}
+
+async function send(file) {
+  setLoading(true);
+  clearResult();
+
+  // Timeout 30s qua AbortController (giống App.tsx).
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+
+  try {
+    const form = new FormData();
+    form.append("file", file, file.name || "photo.jpg");
+    const r = await fetch(BACKEND_URL, {
+      method: "POST", body: form, signal: controller.signal,
+    });
+    const data = await r.json();
+
+    // Backend báo lỗi (vd decode ảnh fail) -> hiện lỗi, KHÔNG hiện kết quả.
+    if (data && data.error) { alert("Lỗi: " + data.error); return; }
+    // HTTP lỗi nhưng không kèm field error.
+    if (!r.ok) { alert("Lỗi server: backend trả về mã " + r.status); return; }
+
+    showResult(data);
+  } catch (e) {
+    if (DEMO_FALLBACK) { showResult(FALLBACK_RESULT); return; }
+    if (e && e.name === "AbortError") {
+      alert("Timeout — backend không phản hồi");
+    } else if (e instanceof TypeError) {
+      // fetch ném TypeError khi không kết nối được -> lỗi mạng.
+      alert("Lỗi mạng: không kết nối được tới backend. Kiểm tra điện thoại và Mac cùng Wi-Fi.");
+    } else {
+      alert("Lỗi server: " + (e && e.message ? e.message : e));
+    }
+  } finally {
+    clearTimeout(timer);
+    setLoading(false);
+  }
+}
+
+function bindInput(btnId, inputId) {
+  $(btnId).addEventListener("click", () => $(inputId).click());
+  $(inputId).addEventListener("change", (ev) => {
+    const file = ev.target.files && ev.target.files[0];
+    if (file) send(file);
+    ev.target.value = ""; // cho phép chọn lại cùng 1 ảnh
+  });
+}
+
+bindInput("cameraBtn", "cameraInput");
+bindInput("libraryBtn", "libraryInput");
+$("retakeBtn").addEventListener("click", clearResult);
+</script>
+</body>
+</html>

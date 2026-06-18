@@ -1,0 +1,62 @@
+# ===== macOS =====
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# ===== Python (backend) =====
+**/.venv/
+**/venv/
+**/env/
+**/__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# ===== Node / React (passme-app, passme-web) =====
+**/node_modules/
+**/dist/
+**/build/
+**/.expo/
+**/.vite/
+**/.next/
+*.log
+npm-debug.log*
+yarn-error.log*
+
+# ===== Biến môi trường / bí mật =====
+.env
+.env.*
+!.env.example
+
+# ===== File lớn / không commit lên git =====
+# (GitHub chặn file > 100MB; mấy file này nên để ngoài git hoặc dùng Git LFS)
+*.zip
+*.mp4
+*.mov
+*.avi
+
+# ===== IDE =====
+.vscode/
+.idea/
+*.swp
+
+# ===== GHI CHÚ về model & tài liệu (đọc kỹ) =====
+# best.pt (~6MB) hiện VẪN commit được (dưới 100MB). Nếu sau này model to hơn
+# hoặc có nhiều model, chuyển sang Git LFS: git lfs track "*.pt"
+#
+# Chốt 09/06: repo CHỈ chứa code → loại tài liệu nặng ra ngoài.
+Docx/
+Videos/
+*.pptx
+*.docx
+
+# ===== Dấu vết công cụ AI / quy trình nội bộ — KHÔNG đưa lên repo =====
+# (Source sẽ bàn giao cho P&G; mấy file này là công cụ làm việc cục bộ, giữ trên máy thôi.)
+**/.claude/
+**/CLAUDE.md
+**/*_PROMPT.md
+SETUP_GITHUB.md
+HANDOFF_UPDATE_*.md
+**/PHASE1_SMOKE_TEST.md
